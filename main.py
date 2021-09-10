@@ -43,22 +43,27 @@ def send_command(user_input):
 
     # собираем URL-адрес из конфигурационного файла
     url = f"http://{console_config['host']}:{console_config['port']}/webhdfs/v1/{current_directory}"
-    print(url)
 
     # загрузка файла в HDFS
     if command == 'upload':
         payload['op'] = 'CREATE'
 
         if command_split[1]:
-            if command_split[1][0] == '/':
-                url = f"http://{console_config['host']}:{console_config['port']}/webhdfs/v1{command_split[1]}"
-            if url[-1] == '/':
-                url += f"{command_split[1]}"
-            else:
-                url += f"/{command_split[1]}"
 
+            filename = command_split[1].split('/')[-1]
+
+            if command_split[1][0] != '/':
+                if url[-1] == '/':
+                    url += f"{filename}"
+                else:
+                    url += f"/{filename}"
+            else:
+                print_error('> Absolute pathing not supported!')
+                return False
+
+            # создание файла в HDFS
+            print('> Upload started...')
             request = requests.put(url, params=payload)
-            # print(request.status_code)
 
             if request.status_code == 201:
                 print_success('> HDFS file created.')
@@ -67,6 +72,7 @@ def send_command(user_input):
 
                 payload['op'] = 'APPEND'
                 try:
+                    # слияние локального файла с файлом HDFS
                     request = requests.post(url, files=files, params=payload, timeout=5)
                 except requests.exceptions.ConnectionError as e:
                     print(e)
@@ -81,6 +87,35 @@ def send_command(user_input):
             else:
                 print_error(f"> Error code: {request.status_code}")
                 return False
+
+    # скачивание файла из HDFS
+    if command == 'download':
+        payload['op'] = 'OPEN'
+
+        filename = command_split[1].split('/')[-1]
+
+        if command_split[1][0] == '/':
+            url = f"http://{console_config['host']}:{console_config['port']}/webhdfs/v1{command_split[1]}"
+        else:
+            if url[-1] == '/':
+                url += f"{command_split[1]}"
+            else:
+                url += f"/{command_split[1]}"
+
+        print('> Download started...')
+        request = requests.get(url, params=payload)
+
+        if request.status_code == 200:
+            print_success(f'> File loaded with code {request.status_code}!')
+
+            file = open(filename, "w")
+            file.write(request.text)
+            file.close()
+
+            return True
+        else:
+            print_error(f'> Error code: {request.status_code}')
+            return False
 
     # создание директории HDFS
     if command == 'mkdir':
@@ -227,6 +262,7 @@ def send_command(user_input):
         return None
 
     else:
+        print_error('> Error: Command not found!')
         return False
 
 
